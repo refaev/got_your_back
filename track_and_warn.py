@@ -31,26 +31,34 @@ class Track:
         self.points = []
         self.last_point = []
         self.last_direc = []
+        self.last_size = [1000000, 1000000]
         self.last_imnum = -1
 
 
-    def add_point(self, point, im_num):
+    def add_point(self, point, im_num, roi_size):
         self.points.append(point)
         if len(self.last_point) > 0:
-            self.last_direc = self.last_point - point
+            self.last_direc = np.asarray(self.last_point) - np.asarray(point)
         else:
             self.last_direc = np.asarray([0, 0])
         self.last_point = point
         self.last_imnum = im_num
+        self.scale = (roi_size[0]*roi_size[1])/(self.last_size[0]*self.last_size[1])
+        self.last_size = roi_size
+
 
     def intersection_warning(self, bottom_line):
         sz_thresh = 15
+        scale_thresh = 1.05
+        ego_direction_ratio = 0.0
         if np.linalg.norm(self.last_direc) < sz_thresh:
+            return False, []
+        if self.scale < scale_thresh:
             return False, []
 
         next_point = self.last_point + 100000 * self.last_direc
         inter = line_intersection([self.last_point, next_point], bottom_line)
-        if inter[1] != None and inter[1] > bottom_line[1][1] * 0.25 and  inter[1] < bottom_line[1][1] * 0.75:
+        if inter[1] != None and inter[1] > bottom_line[1][1] * ego_direction_ratio and  inter[1] < bottom_line[1][1] * (1-ego_direction_ratio):
             return True, inter
         else:
             return False, []
@@ -61,21 +69,21 @@ class Tracker:
     def __init__(self):
         self.tracks = []
 
-    def add_point(self, point, im_num):
+    def add_point(self, point, im_num, roi_size):
         thresh = 100
         mn_dist = 10000
         for track in self.tracks:
             if track.last_imnum == im_num:
                 continue
-            dist = np.linalg.norm(track.last_point - point)
+            dist = np.linalg.norm(np.asarray(track.last_point) - np.asarray(point))
             if dist < mn_dist:
                 mn_dist = dist
                 mn_dist_track = track
         if mn_dist < thresh:
-            mn_dist_track.add_point(point, im_num)
+            mn_dist_track.add_point(point, im_num, roi_size)
         else:
             new_track = Track()
-            new_track.add_point(point, im_num)
+            new_track.add_point(point, im_num, roi_size)
             self.tracks.append(new_track)
 
     def display(self, im, im_num):
@@ -88,18 +96,19 @@ class Tracker:
             last_point = track.last_direc + curr_point
             # im = cv.arrowedLine(im,curr_point, last_point, [0, 0, 255],3)
             plt.arrow(last_point[0], last_point[1], last_direc[0], last_direc[1], hold=True)
-        plt.pause(0.0001)
         return im
 
     def intersection_warning(self, bottom_line, display_inter=False):
+        inter = False
         for track in self.tracks:
             intersection_warning, intersect = track.intersection_warning(bottom_line)
             if intersection_warning:
-                plt.plot([track.last_point[0], intersect[1]], [track.last_point[1], intersect[0]], 'r-')
-                plt.plot(intersect[1], intersect[0], 'r*')
-                plt.plot(intersect[1], intersect[0], 'r*')
-                return True
-        return False
+                if display_inter:
+                    plt.plot([track.last_point[0], intersect[1]], [track.last_point[1], intersect[0]], 'r-')
+                    plt.plot(intersect[1], intersect[0], 'r*')
+                    plt.plot(intersect[1], intersect[0], 'r*')
+                inter = True
+        return inter
 
 
 def track_objects(obj , folder):
@@ -117,9 +126,16 @@ def track_objects(obj , folder):
         detections = data['detections']
         for detection in detections:
             # type = detection[0]
-            roi = detection[2]
-            cen = np.asarray([roi[0], roi[1]])
-            tracker.add_point(cen, im_num)
+            roi = np.asarray(detection[2])
+            cen = [roi[0], roi[1]]
+            roi_size = np.abs([roi[2]-roi[0], roi[3] - roi[1]])
+            tracker.add_point(cen, im_num, roi_size)
+
+            roi_tl = [roi[0] - roi[2]/2, roi[1] - roi[3]/2, roi[2], roi[3]]
+            roi_ = np.asarray(roi_tl).astype(int)
+
+            im = cv.rectangle(img=im, rec=roi_,  color=(255, 0, 0), thickness=3)
+
         tracker.display(im[:, :, ::-1], im_num)
         if first_im:
             first_im = False
@@ -129,13 +145,15 @@ def track_objects(obj , folder):
                 rect = patches.Rectangle([0, 0], im.shape[1], im.shape[0], 0, linewidth=5,edgecolor='r',facecolor='none')
                 ax.add_patch(rect)
         # plt.plot(im)
-        # plt.pause(0.0001)
+        plt.pause(.0001)
         # out_path = os.path.join(folder, 'warning', file)
         # cv.imwrite(out_path, im)
-    a=1
+
+        a=1
 
 if __name__ == '__main__':
-    folder = r'E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (9)'
+    # folder = r'E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (9)'
+    folder = r'E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (4)'
     file_path = os.path.join(folder, r"YoloV3_res\res_pkl.pkl")
     obj = pd.read_pickle(file_path)
     obj = collections.OrderedDict(sorted(obj.items()))
