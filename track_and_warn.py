@@ -95,7 +95,7 @@ class Tracker:
             last_direc = -track.last_direc
             last_point = track.last_direc + curr_point
             # im = cv.arrowedLine(im,curr_point, last_point, [0, 0, 255],3)
-            plt.arrow(last_point[0], last_point[1], last_direc[0], last_direc[1], hold=True)
+            plt.arrow(last_point[0], last_point[1], last_direc[0], last_direc[1], hold=True, color=(0, 1, 0))
         return im
 
     def intersection_warning(self, bottom_line, display_inter=False):
@@ -121,6 +121,10 @@ def track_objects(obj , folder):
         data = obj[im_num]
         file = data['fileName'][12:]
         file_path = os.path.join(folder, file)
+        file_path = file_path[:-4] + ".png"
+        if not os.path.exists(file_path):
+            continue
+
         im = cv.imread(file_path)
         bottom_line = [ [ im.shape[0], 0], [ im.shape[0], im.shape[1]]]
         detections = data['detections']
@@ -153,8 +157,8 @@ def track_objects(obj , folder):
 
 if __name__ == '__main__':
     # folder = r'E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (9)'
-    folder = r'E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (4)'
-    file_path = os.path.join(folder, r"YoloV3_res\res_pkl.pkl")
+    folder = r'E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (4)\cut'
+    file_path = r"E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (4)\YoloV3_res\res_pkl.pkl"
     obj = pd.read_pickle(file_path)
     obj = collections.OrderedDict(sorted(obj.items()))
     track_objects(obj, folder)
