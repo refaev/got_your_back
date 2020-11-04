@@ -6,6 +6,7 @@ import pandas as pd
 import cv2 as cv
 import os
 import collections
+import scipy.signal as sig
 
 
 def det(a, b):
@@ -69,6 +70,7 @@ class Tracker:
     def __init__(self):
         self.tracks = []
         self.last_image = []
+        self.global_disparity = [0, 0]
 
     def add_point(self, point, im_num, roi_size):
         thresh = 100
@@ -112,7 +114,12 @@ class Tracker:
         return inter
 
     def track_image(self, im, detections, im_num):
+        if len(self.last_image) > 0:
+            disparity = find_global_move(im, self.last_image)
+            self.global_disparity += disparity
+
         self.last_image = im.copy()
+
         for detection in detections:
             # type = detection[0]
             roi = np.asarray(detection[2])
@@ -125,6 +132,22 @@ class Tracker:
 
             im = cv.rectangle(img=im, rec=roi_, color=(255, 0, 0), thickness=3)
             return im
+
+def find_global_move(im1, im2):
+    im1_gray = np.mean(im1.astype('float'), axis=2)
+    im2_gray = np.mean(im2.astype('float'), axis=2)
+
+    # get rid of the averages, otherwise the results are not good
+    im1_gray -= np.mean(im1_gray)
+    im2_gray -= np.mean(im2_gray)
+    # calculate the correlation image; note the flipping of onw of the images
+    corr_img = sig.fftconvolve(im1_gray, im2_gray[::-1, ::-1], mode='same')
+    mx = np.unravel_index(np.argmax(corr_img), corr_img.shape)
+    shift = np.asarray(im1_gray.shape).astype(float) / 2 - mx
+    print(shift)
+    return shift
+
+
 
 
 def track_objects(obj , folder):
