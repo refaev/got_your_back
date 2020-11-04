@@ -68,6 +68,7 @@ class Tracker:
 
     def __init__(self):
         self.tracks = []
+        self.last_image = []
 
     def add_point(self, point, im_num, roi_size):
         thresh = 100
@@ -110,19 +111,21 @@ class Tracker:
                 inter = True
         return inter
 
-def track_image(im, tracker, data, im_num):
-    detections = data['detections']
-    for detection in detections:
-        # type = detection[0]
-        roi = np.asarray(detection[2])
-        cen = [roi[0], roi[1]]
-        roi_size = np.abs([roi[2] - roi[0], roi[3] - roi[1]])
-        tracker.add_point(cen, im_num, roi_size)
+    def track_image(self, im, detections, im_num):
+        self.last_image = im.copy()
+        for detection in detections:
+            # type = detection[0]
+            roi = np.asarray(detection[2])
+            cen = [roi[0], roi[1]]
+            roi_size = np.abs([roi[2] - roi[0], roi[3] - roi[1]])
+            self.add_point(cen, im_num, roi_size)
 
-        roi_tl = [roi[0] - roi[2] / 2, roi[1] - roi[3] / 2, roi[2], roi[3]]
-        roi_ = np.asarray(roi_tl).astype(int)
+            roi_tl = [roi[0] - roi[2] / 2, roi[1] - roi[3] / 2, roi[2], roi[3]]
+            roi_ = np.asarray(roi_tl).astype(int)
 
-        im = cv.rectangle(img=im, rec=roi_, color=(255, 0, 0), thickness=3)
+            im = cv.rectangle(img=im, rec=roi_, color=(255, 0, 0), thickness=3)
+            return im
+
 
 def track_objects(obj , folder):
     tracker = Tracker()
@@ -140,8 +143,8 @@ def track_objects(obj , folder):
 
         im = cv.imread(file_path)
         bottom_line = [[im.shape[0], 0], [im.shape[0], im.shape[1]]]
-
-        im = track_image(im, tracker, data, im_num)
+        detections = data['detections']
+        im = tracker.track_image(im, detections, im_num)
 
         tracker.display(im[:, :, ::-1], im_num)
         if first_im:
