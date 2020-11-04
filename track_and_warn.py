@@ -31,6 +31,7 @@ class Track:
     def __init__(self):
         self.points = []
         self.last_point = []
+        self.last_last_point = []
         self.last_direc = []
         self.last_size = [1000000, 1000000]
         self.last_imnum = -1
@@ -42,7 +43,8 @@ class Track:
             self.last_direc = np.asarray(self.last_point) - np.asarray(point)
         else:
             self.last_direc = np.asarray([0, 0])
-        self.last_point = point
+        self.last_last_point = self.last_point
+        self.last_point = np.asarray(point)
         self.last_imnum = im_num
         self.scale = (roi_size[0]*roi_size[1])/(self.last_size[0]*self.last_size[1])
         self.last_size = roi_size
@@ -50,7 +52,7 @@ class Track:
 
     def intersection_warning(self, bottom_line):
         sz_thresh = 5
-        scale_thresh = 1.00
+        scale_thresh = 0.00
         ego_direction_ratio = 0.0
         if np.linalg.norm(self.last_direc) < sz_thresh:
             return False, []
@@ -59,12 +61,12 @@ class Track:
 
         next_point = self.last_point + 100000 * self.last_direc
         inter = line_intersection([self.last_point, next_point], bottom_line)
-        left_rafter = inter[1] > bottom_line[1][1] * ego_direction_ratio
-        right_rafter = inter[1] < bottom_line[1][1] * (1-ego_direction_ratio)
+        left_rafter = inter[1] > bottom_line[1][0] * ego_direction_ratio
+        right_rafter = inter[1] < bottom_line[1][0] * (1-ego_direction_ratio)
         if inter[1] != None and left_rafter and right_rafter:
             return True, inter
         else:
-            return False, []
+            return False, inter
 
 
 class Tracker:
@@ -98,12 +100,15 @@ class Tracker:
         for track in self.tracks:
             if not track.last_imnum == im_num:
                 continue
+            if len(track.last_last_point) == 0:
+                continue
             curr_point = track.last_point
-            last_direc = -track.last_direc
-            last_point = track.last_direc + curr_point
+            last_point = track.last_last_point
+            direc = curr_point - last_point
 
             # im = cv.arrowedLine(im,curr_point, last_point, [0, 0, 255],3)
-            plt.arrow(last_point[0], last_point[1], last_direc[0], last_direc[1], hold=True, color=(0, 1, 0))
+            plt.plot([curr_point[0], last_point[0]], [curr_point[1], last_point[1]], 'xb')
+            plt.arrow(last_point[0], last_point[1], direc[0], direc[1], hold=True, color=(0, 1, 0))
         return im
 
     def intersection_warning(self, bottom_line, im_num, display_inter=False):
@@ -114,7 +119,7 @@ class Tracker:
             intersection_warning, intersect = track.intersection_warning(bottom_line)
             if intersection_warning:
                 if display_inter:
-                    plt.plot([track.last_point[0], intersect[1]], [track.last_point[1], intersect[0]], 'r-')
+                    plt.plot([track.last_point[0], intersect[0]], [track.last_point[1], intersect[1]], 'r-')
                     # plt.plot(intersect[1], intersect[0], 'r*')
                 inter = True
         return inter
@@ -131,6 +136,10 @@ class Tracker:
             # type = detection[0]
             roi = np.asarray(detection[2])
             cen = [roi[0], roi[1]]
+            if cen[0] > im.shape[1] or cen[1] > im.shape[0]:
+                a=1
+                continue
+
             roi_size = np.abs([roi[2] - roi[0], roi[3] - roi[1]])
             self.add_point(cen, im_num, roi_size)
 
@@ -138,7 +147,7 @@ class Tracker:
             roi_ = np.asarray(roi_tl).astype(int)
 
             im = cv.rectangle(img=im, rec=roi_, color=(255, 0, 0), thickness=3)
-            return im
+        return im
 
 def find_global_move(im1, im2):
     im1_gray = np.mean(im1.astype('float'), axis=2)
