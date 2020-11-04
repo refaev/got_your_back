@@ -49,8 +49,8 @@ class Track:
 
 
     def intersection_warning(self, bottom_line):
-        sz_thresh = 15
-        scale_thresh = 1.05
+        sz_thresh = 5
+        scale_thresh = 1.00
         ego_direction_ratio = 0.0
         if np.linalg.norm(self.last_direc) < sz_thresh:
             return False, []
@@ -59,7 +59,9 @@ class Track:
 
         next_point = self.last_point + 100000 * self.last_direc
         inter = line_intersection([self.last_point, next_point], bottom_line)
-        if inter[1] != None and inter[1] > bottom_line[1][1] * ego_direction_ratio and  inter[1] < bottom_line[1][1] * (1-ego_direction_ratio):
+        left_rafter = inter[1] > bottom_line[1][1] * ego_direction_ratio
+        right_rafter = inter[1] < bottom_line[1][1] * (1-ego_direction_ratio)
+        if inter[1] != None and left_rafter and right_rafter:
             return True, inter
         else:
             return False, []
@@ -91,25 +93,29 @@ class Tracker:
 
     def display(self, im, im_num):
         plt.clf()
-        plt.imshow(im)
+        plt.imshow(im[:, :, ::-1])
         plt.title(str(im_num))
         for track in self.tracks:
+            if not track.last_imnum == im_num:
+                continue
             curr_point = track.last_point
             last_direc = -track.last_direc
             last_point = track.last_direc + curr_point
+
             # im = cv.arrowedLine(im,curr_point, last_point, [0, 0, 255],3)
             plt.arrow(last_point[0], last_point[1], last_direc[0], last_direc[1], hold=True, color=(0, 1, 0))
         return im
 
-    def intersection_warning(self, bottom_line, display_inter=False):
+    def intersection_warning(self, bottom_line, im_num, display_inter=False):
         inter = False
         for track in self.tracks:
+            if not im_num == track.last_imnum:
+                continue
             intersection_warning, intersect = track.intersection_warning(bottom_line)
             if intersection_warning:
                 if display_inter:
                     plt.plot([track.last_point[0], intersect[1]], [track.last_point[1], intersect[0]], 'r-')
-                    plt.plot(intersect[1], intersect[0], 'r*')
-                    plt.plot(intersect[1], intersect[0], 'r*')
+                    # plt.plot(intersect[1], intersect[0], 'r*')
                 inter = True
         return inter
 
@@ -117,6 +123,7 @@ class Tracker:
         if len(self.last_image) > 0:
             disparity = find_global_move(im, self.last_image)
             self.global_disparity += disparity
+            im = np.roll(im, -self.global_disparity.astype(int))
 
         self.last_image = im.copy()
 
@@ -148,8 +155,6 @@ def find_global_move(im1, im2):
     return shift
 
 
-
-
 def track_objects(obj , folder):
     tracker = Tracker()
     first_im = True
@@ -165,7 +170,7 @@ def track_objects(obj , folder):
             continue
 
         im = cv.imread(file_path)
-        bottom_line = [[im.shape[0], 0], [im.shape[0], im.shape[1]]]
+        bottom_line = [[0., im.shape[0]], [im.shape[1], im.shape[0]]]
         detections = data['detections']
         im = tracker.track_image(im, detections, im_num)
 
@@ -173,7 +178,7 @@ def track_objects(obj , folder):
         if first_im:
             first_im = False
         else:
-            inter = tracker.intersection_warning(bottom_line, True)
+            inter = tracker.intersection_warning(bottom_line, im_num, True)
             if inter:
                 rect = patches.Rectangle([0, 0], im.shape[1], im.shape[0], 0, linewidth=5,edgecolor='r',facecolor='none')
                 ax.add_patch(rect)
