@@ -8,6 +8,8 @@ import os
 import collections
 import scipy.signal as sig
 
+import order_obj
+
 
 def det(a, b):
     return a[0] * b[1] - a[1] * b[0]
@@ -49,11 +51,10 @@ class Track:
         self.scale = (roi_size[0]*roi_size[1])/(self.last_size[0]*self.last_size[1])
         self.last_size = roi_size
 
-
     def intersection_warning(self, bottom_line):
         sz_thresh = 5
         scale_thresh = 0.00
-        ego_direction_ratio = 0.0
+        ego_direction_ratio = 0.2
         if np.linalg.norm(self.last_direc) < sz_thresh:
             return False, []
         if self.scale < scale_thresh:
@@ -61,8 +62,8 @@ class Track:
 
         next_point = self.last_point + 100000 * self.last_direc
         inter = line_intersection([self.last_point, next_point], bottom_line)
-        left_rafter = inter[1] > bottom_line[1][0] * ego_direction_ratio
-        right_rafter = inter[1] < bottom_line[1][0] * (1-ego_direction_ratio)
+        left_rafter = inter[0] > bottom_line[1][0] * ego_direction_ratio
+        right_rafter = inter[0] < bottom_line[1][0] * (1-ego_direction_ratio)
         if inter[1] != None and left_rafter and right_rafter:
             return True, inter
         else:
@@ -75,6 +76,7 @@ class Tracker:
         self.tracks = []
         self.last_image = []
         self.global_disparity = [0, 0]
+        self.use_global_tracker = False
 
     def add_point(self, point, im_num, roi_size):
         thresh = 100
@@ -119,13 +121,13 @@ class Tracker:
             intersection_warning, intersect = track.intersection_warning(bottom_line)
             if intersection_warning:
                 if display_inter:
-                    plt.plot([track.last_point[0], intersect[0]], [track.last_point[1], intersect[1]], 'r-')
+                    plt.plot([track.last_point[0], intersect[0]-1], [track.last_point[1], intersect[1]-1], 'r-')
                     # plt.plot(intersect[1], intersect[0], 'r*')
                 inter = True
         return inter
 
     def track_image(self, im, detections, im_num):
-        if len(self.last_image) > 0:
+        if self.use_global_tracker > 0 and len(self.last_image):
             disparity = find_global_move(im, self.last_image)
             self.global_disparity += disparity
             im = np.roll(im, -self.global_disparity.astype(int))
@@ -137,7 +139,6 @@ class Tracker:
             roi = np.asarray(detection[2])
             cen = [roi[0], roi[1]]
             if cen[0] > im.shape[1] or cen[1] > im.shape[0]:
-                a=1
                 continue
 
             roi_size = np.abs([roi[2] - roi[0], roi[3] - roi[1]])
@@ -164,17 +165,17 @@ def find_global_move(im1, im2):
     return shift
 
 
-def track_objects(obj , folder):
+def track_objects(obj , folder, skip=1):
     tracker = Tracker()
     first_im = True
     fig, ax = plt.subplots(1)
     for im_num in obj.keys():
-        if int(im_num) < 10:
+        if not im_num % 5 == 0:
             continue
         data = obj[im_num]
-        file = data['fileName'][12:]
+        file = data['fileName'].split('/')[-1]
         file_path = os.path.join(folder, file)
-        file_path = file_path[:-4] + ".png"
+        # file_path = file_path[:-4] + ".jpg"
         if not os.path.exists(file_path):
             continue
 
@@ -183,7 +184,7 @@ def track_objects(obj , folder):
         detections = data['detections']
         im = tracker.track_image(im, detections, im_num)
 
-        tracker.display(im[:, :, ::-1], im_num)
+        tracker.display(im, im_num)
         if first_im:
             first_im = False
         else:
@@ -192,16 +193,15 @@ def track_objects(obj , folder):
                 rect = patches.Rectangle([0, 0], im.shape[1], im.shape[0], 0, linewidth=5,edgecolor='r',facecolor='none')
                 ax.add_patch(rect)
         # plt.plot(im)
-        plt.pause(.0001)
+        plt.pause(.01)
         # out_path = os.path.join(folder, 'warning', file)
         # cv.imwrite(out_path, im)
 
         a=1
 
 if __name__ == '__main__':
-    # folder = r'E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (9)'
-    folder = r'E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (4)\cut'
-    file_path = r"E:\rafi\got_your_back\data\results_files\res\temp_dir - Copy (4)\YoloV3_res\res_pkl.pkl"
+    folder = r'E:\rafi\got_your_back\data\toyota\1'
+    file_path = r"E:\rafi\got_your_back\data\toyota\1\T1_res_pkl.pkl"
     obj = pd.read_pickle(file_path)
-    obj = collections.OrderedDict(sorted(obj.items()))
-    track_objects(obj, folder)
+    obj = order_obj.order_obj(obj)
+    track_objects(obj, folder, 5)
