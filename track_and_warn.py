@@ -54,7 +54,7 @@ class Track:
     def intersection_warning(self, bottom_line):
         sz_thresh = 5
         scale_thresh = 0.00
-        ego_direction_ratio = 0.2
+        ego_direction_ratio = 0.33
         if np.linalg.norm(self.last_direc) < sz_thresh:
             return False, []
         if self.scale < scale_thresh:
@@ -109,22 +109,24 @@ class Tracker:
             direc = curr_point - last_point
 
             # im = cv.arrowedLine(im,curr_point, last_point, [0, 0, 255],3)
-            plt.plot([curr_point[0], last_point[0]], [curr_point[1], last_point[1]], 'xb')
+            # plt.plot([curr_point[0], last_point[0]], [curr_point[1], last_point[1]], 'xb')
             plt.arrow(last_point[0], last_point[1], direc[0], direc[1], hold=True, color=(0, 1, 0))
         return im
 
     def intersection_warning(self, bottom_line, im_num, display_inter=False):
         inter = False
+        intersect = []
+
         for track in self.tracks:
             if not im_num == track.last_imnum:
                 continue
             intersection_warning, intersect = track.intersection_warning(bottom_line)
             if intersection_warning:
-                if display_inter:
-                    plt.plot([track.last_point[0], intersect[0]-1], [track.last_point[1], intersect[1]-1], 'r-')
+                # if display_inter:
+                #     plt.plot([track.last_point[0], intersect[0]-1], [track.last_point[1], intersect[1]-1], 'r-')
                     # plt.plot(intersect[1], intersect[0], 'r*')
                 inter = True
-        return inter
+        return inter, intersect, track.last_point
 
     def track_image(self, im, detections, im_num):
         if self.use_global_tracker > 0 and len(self.last_image):
@@ -148,6 +150,7 @@ class Tracker:
             roi_ = np.asarray(roi_tl).astype(int)
 
             im = cv.rectangle(img=im, rec=roi_, color=(255, 0, 0), thickness=3)
+            break
         return im
 
 def find_global_move(im1, im2):
@@ -165,10 +168,11 @@ def find_global_move(im1, im2):
     return shift
 
 
-def track_objects(obj , folder, skip=1):
+def track_objects(obj , folder, video, skip=1):
     tracker = Tracker()
     first_im = True
     fig, ax = plt.subplots(1)
+
     for im_num in obj.keys():
         if not im_num % 5 == 0:
             continue
@@ -184,24 +188,33 @@ def track_objects(obj , folder, skip=1):
         detections = data['detections']
         im = tracker.track_image(im, detections, im_num)
 
-        tracker.display(im, im_num)
         if first_im:
             first_im = False
         else:
-            inter = tracker.intersection_warning(bottom_line, im_num, True)
+            inter, intersect, last_point = tracker.intersection_warning(bottom_line, im_num, True)
             if inter:
+                s = np.asarray(last_point).astype(int)
+                e = np.asarray(intersect).astype(int)
+                im = cv.line(im, (s[0],s[1]), (e[0], e[1]), (255,0,0), 3)
                 rect = patches.Rectangle([0, 0], im.shape[1], im.shape[0], 0, linewidth=5,edgecolor='r',facecolor='none')
                 ax.add_patch(rect)
-        # plt.plot(im)
+
+        tracker.display(im, im_num)
         plt.pause(.01)
         # out_path = os.path.join(folder, 'warning', file)
         # cv.imwrite(out_path, im)
-
-        a=1
+        video.write(im)
 
 if __name__ == '__main__':
-    folder = r'E:\rafi\got_your_back\data\toyota\1'
-    file_path = r"E:\rafi\got_your_back\data\toyota\1\T1_res_pkl.pkl"
+    movie = '3'
+    folder = r'E:\rafi\got_your_back\data\toyota\\' + movie
+    file_path = r"E:\rafi\got_your_back\data\toyota\\" + movie + r"\T" + movie + "_res_pkl.pkl"
+    video = cv.VideoWriter(r"E:\rafi\got_your_back\data\toyota\\" + movie + r"\res_toyota_" + movie + r".avi", 0, 1, (1920, 1080))
+
     obj = pd.read_pickle(file_path)
     obj = order_obj.order_obj(obj)
-    track_objects(obj, folder, 5)
+    track_objects(obj, folder, video, 5)
+    cv.destroyAllWindows()
+    video.release()
+
+
